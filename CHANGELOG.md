@@ -2,6 +2,10 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.1 - 2026-09-15
+
+- Maintenance release used to exercise the new self-update button. No functional changes.
+
 ## 1.1.0 - 2026-09-15
 
 - The page checks GitHub for a newer release and shows the available version above the footer.
