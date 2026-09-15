@@ -2,6 +2,19 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.0 - 2026-09-15
+
+- The page checks GitHub for a newer release and shows the available version above the footer.
+- **Update Compose Wellness** button: a root-owned systemd path unit installed
+  by `install.sh` downloads the latest release and runs its `install.sh`. No console needed.
+  Configurable with `ALLOW_SELF_UPDATE` (default true) and `UPDATE_REPOSITORY` (default
+  `martingertsen/compose-wellness`, empty disables the check). Upgrading from 1.0.0 needs one
+  manual `install.sh` run to install the helper units.
+- `ComposeWellness --version` prints the version.
+- Releases include a `SHA256SUMS` file; the self-update verifies the download against it.
+- `GET /api/settings` reports `latestVersion`, `releaseUrl`, `updateAvailable`, `canSelfUpdate`
+  and `updateRepository`. New `POST /api/self-update`.
+
 ## 1.0.0 - 2026-09-15
 
 First public release.

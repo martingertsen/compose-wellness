@@ -138,7 +138,63 @@ same commands without any variables: every setting is taken from the existing co
 To install a specific version, replace `latest/download` in the URL with `download/v1.0.0`.
 Afterwards hard-reload the page in the browser (Ctrl+F5) so it picks up the new scripts and styles.
 
+Upgrading from 1.0.0 requires this manual run once: it installs the helper units for the update
+button. From then on every later release can be installed from the web UI, see
+[Update from the web UI](#update-from-the-web-ui).
+
 Releases are built by GitHub Actions from the tagged source; see `.github/workflows/release.yml`.
+
+### Update from the web UI
+
+When a newer release exists on GitHub, the page shows "Version x.y.z of Compose Wellness is
+available." above the footer, with a link to the release notes and the button
+**Update Compose Wellness**. The button is disabled while an update of your stacks is running.
+Pressing it:
+
+1. The web service writes `/var/lib/compose-wellness/self-update.request`. That is all it can do:
+   it runs as an unprivileged user and cannot replace its own files.
+2. `compose-wellness-update.path`, a root-owned systemd unit installed by `install.sh`, notices
+   the file and starts `compose-wellness-update.service`.
+3. `self-update.sh` removes the trigger file, reads the update repository from the systemd
+   configuration of the service (never from the browser), downloads
+   `compose-wellness-<arch>.tar.gz` of the latest release, verifies it against the release's
+   `SHA256SUMS` when present, and runs that release's `install.sh`. Existing settings are kept
+   exactly as with a manual upgrade.
+4. The page polls until the new version answers, then reloads. If nothing happens within three
+   minutes it says so; check `journalctl -u compose-wellness-update` on the host.
+
+The check runs 10 seconds after the service starts and every 6 hours, against
+`https://api.github.com/repos/<repository>/releases/latest`. On a host without internet access
+the check fails quietly and nothing is shown.
+
+Settings (see the table under "What the install script does"):
+
+- `ALLOW_SELF_UPDATE` (default `true`) shows the button and accepts the request. With `false` the
+  version notice and link are still shown, without a button. The root helper checks the setting as
+  well, so a trigger file created by other means is ignored while it is false.
+- `UPDATE_REPOSITORY` (default `martingertsen/compose-wellness`) is the GitHub `owner/repo`
+  whose releases are used. Empty disables the check entirely.
+
+Because the page has no authentication, anyone who can reach it can start an upgrade. The
+upgrade only ever installs the latest release of the repository configured by root, so the
+consequence is limited to a restart and a newer version. Set `ALLOW_SELF_UPDATE=false` if even
+that is unwanted.
+
+#### Forks
+
+Set `UPDATE_REPOSITORY=you/your-fork` when installing. The fork's releases must be tagged
+`vX.Y.Z` and contain assets named `compose-wellness-linux-x64.tar.gz` and
+`compose-wellness-linux-arm64.tar.gz`, which the included release workflow produces. A
+`SHA256SUMS` asset is optional; without it the download is installed unverified.
+
+Testing the helper without a newer release:
+
+```bash
+sudo touch /var/lib/compose-wellness/self-update.request
+journalctl -u compose-wellness-update -n 20
+```
+
+The last line should read `Already up to date (x.y.z).`
 
 ### Build a release yourself
 
@@ -178,6 +234,8 @@ The same `install.sh` handles first installs and upgrades. It:
 - installs `/etc/systemd/system/compose-wellness.service`
 - writes your settings to `/etc/systemd/system/compose-wellness.service.d/10-install.conf`
 - enables and starts the service
+- installs `compose-wellness-update.service` and `compose-wellness-update.path` (the self-update
+  helper, see above) and enables the path unit
 
 Variables understood by `install.sh`. A variable that is not passed keeps the value from the
 existing drop-in, or the default on a first install:
@@ -189,6 +247,8 @@ existing drop-in, or the default on a first install:
 | `SERVICE_USER`      | `compose-wellness`          | Account the service and all scripts run as                  |
 | `ALLOW_ROOT_CHANGE` | `false`                   | Let the folder be changed from the web UI                   |
 | `REMOVE_ORPHANS`    | `false`                   | Pass `--remove-orphans` to `docker compose up`              |
+| `ALLOW_SELF_UPDATE` | `true`                    | Show the update button in the web UI                        |
+| `UPDATE_REPOSITORY` | `martingertsen/compose-wellness` | GitHub `owner/repo` checked for releases; empty disables the check |
 | `INSTALL_DIR`       | `/opt/compose-wellness`     | Where the application files are placed                      |
 
 The script only writes `10-install.conf`. Put any other systemd or application settings in a
@@ -221,11 +281,20 @@ If you prefer not to use the script: publish the application, copy the output to
 `User=`, `Environment=ComposeWellness__RootDirectory=` and `Environment=ASPNETCORE_URLS=` lines, and run
 `systemctl daemon-reload && systemctl enable --now compose-wellness`.
 
+For the update button, also copy `deploy/compose-wellness-update.service` and
+`deploy/compose-wellness-update.path` to `/etc/systemd/system/`, place `deploy/self-update.sh`
+in the application directory, and run `systemctl enable --now compose-wellness-update.path`.
+If you skip these files, also remove the `Environment=ComposeWellness__SelfUpdateTriggerFile=...`
+line from the unit, or set `ComposeWellness__AllowSelfUpdate=false`; otherwise the button is
+shown but pressing it has no effect because nothing watches the trigger file.
+
 ### Uninstall
 
 ```bash
-sudo systemctl disable --now compose-wellness
-sudo rm -rf /etc/systemd/system/compose-wellness.service /etc/systemd/system/compose-wellness.service.d /opt/compose-wellness
+sudo systemctl disable --now compose-wellness compose-wellness-update.path
+sudo rm -rf /etc/systemd/system/compose-wellness.service /etc/systemd/system/compose-wellness.service.d \
+            /etc/systemd/system/compose-wellness-update.service /etc/systemd/system/compose-wellness-update.service.d \
+            /etc/systemd/system/compose-wellness-update.path /opt/compose-wellness
 sudo systemctl daemon-reload
 sudo userdel compose-wellness   # optional
 ```
@@ -252,6 +321,8 @@ variables, which is how the systemd drop-in configures the service.
 | `ComposeWellness:RootDirectory`    | `ComposeWellness__RootDirectory`    | Absolute path whose immediate child directories are the stacks. A folder chosen in the web UI takes precedence. |
 | `ComposeWellness:AllowRootDirectoryChange` | `ComposeWellness__AllowRootDirectoryChange` | `false` (default) shows the folder read-only in the web UI; `true` lets it be changed there. |
 | `ComposeWellness:RemoveOrphans`    | `ComposeWellness__RemoveOrphans`    | `false` (default) runs `docker compose up -d`; `true` adds `--remove-orphans`. |
+| `ComposeWellness:AllowSelfUpdate`  | `ComposeWellness__AllowSelfUpdate`  | `true` (default) shows the update button when a newer release exists; `false` shows only the notice. |
+| `ComposeWellness:UpdateRepository` | `ComposeWellness__UpdateRepository` | GitHub `owner/repo` whose latest release is checked every 6 hours. Default `martingertsen/compose-wellness`; empty disables the check. |
 | `ComposeWellness:DataDirectory`    | `ComposeWellness__DataDirectory`    | Where `settings.json` with UI changes is stored. The systemd unit sets `/var/lib/compose-wellness`; default is the application directory. |
 | `ComposeWellness:LogDirectory`     | `ComposeWellness__LogDirectory`     | Directory for one log file per update. Empty disables disk logging. The systemd unit sets `/var/log/compose-wellness`. |
 | `ComposeWellness:MaxLogLines`      | `ComposeWellness__MaxLogLines`      | Lines of the current update kept in memory for the web UI. |
@@ -274,9 +345,11 @@ what runs during that update. Access to the Docker socket is equivalent to root 
 - Only expose it on a network you trust completely, or put it behind a reverse proxy that adds
   authentication (for example nginx with basic auth or an identity-aware proxy) and keep the
   service itself bound to localhost.
-- The HTTP API takes no commands from the browser. Its two mutable actions are "start an update"
-  and "change the scanned folder". Both require a custom request header, so another website open
-  in your browser cannot trigger them.
+- The HTTP API takes no commands from the browser. Its three mutable actions are "start an
+  update", "change the scanned folder" and "upgrade Compose Wellness to the latest release of the
+  configured repository". All require a custom request header, so another website open in your
+  browser cannot trigger them. The upgrade is performed by a root-owned systemd unit that reads
+  its configuration from root-owned files only; the browser cannot choose what gets installed.
 - Changing the folder from the UI is off by default. When enabled, anyone who can reach the page
   can point Compose Wellness at any existing directory on the host, including world-writable ones such
   as `/tmp`, and place an `update.sh` there. Only enable it where you alone can reach the page.
@@ -292,9 +365,10 @@ what runs during that update. Access to the Docker socket is equivalent to root 
 |--------|-----------------------------|-------------|
 | `GET`  | `/api/status`               | Current state, results so far and summary when finished. |
 | `GET`  | `/api/stacks`               | Directories the next update would process (those with an `update.sh` or a Compose file), without asking Docker. |
-| `GET`  | `/api/settings`             | Current and configured root directory, whether it can be changed, and the application version. |
+| `GET`  | `/api/settings`             | Current and configured root directory, whether it can be changed, the application version, and the latest release (`latestVersion`, `releaseUrl`, `updateAvailable`, `canSelfUpdate`, `updateRepository`). |
 | `PUT`  | `/api/settings/root-directory` | Body `{ "rootDirectory": "/abs/path" }`. Requires the `X-Requested-With: ComposeWellness` header. `400` for a missing directory, `403` when disabled, `409` while an update runs. |
 | `POST` | `/api/update`               | Starts an update. Requires the header `X-Requested-With: ComposeWellness` (CSRF guard), otherwise `403`. Returns `202 Accepted`, or `409 Conflict` when one is already running. |
+| `POST` | `/api/self-update`          | Asks the root helper to upgrade to the latest release. Requires the `X-Requested-With: ComposeWellness` header. `202` with `{ "latestVersion": "1.2.0" }`, `403` when disabled or the helper is not installed, `409` while an update runs or when no newer version is known. |
 | `GET`  | `/api/log?after=<sequence>` | Retained log lines with a sequence number greater than `after`. |
 | `GET`  | `/api/events?after=<sequence>` | Server-Sent Events stream: a `status` event, replay of retained `log` events, then live events. Browsers resume with the standard `Last-Event-ID` header. |
 

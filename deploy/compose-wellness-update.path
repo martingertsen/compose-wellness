@@ -1,0 +1,12 @@
+# Watches for the trigger file the web UI creates and starts the self-update service.
+# PathExists fires as long as the file exists, so self-update.sh removes it first.
+
+[Unit]
+Description=Starts a Compose Wellness self-update when the web UI requests one
+
+[Path]
+PathExists=/var/lib/compose-wellness/self-update.request
+Unit=compose-wellness-update.service
+
+[Install]
+WantedBy=multi-user.target

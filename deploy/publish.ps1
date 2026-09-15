@@ -34,7 +34,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed"
 }
 
-Copy-Item (Join-Path $repo "deploy\install.sh"), (Join-Path $repo "deploy\compose-wellness.service") $out
+Copy-Item (Join-Path $repo "deploy\install.sh"), (Join-Path $repo "deploy\compose-wellness.service"),
+          (Join-Path $repo "deploy\compose-wellness-update.service"), (Join-Path $repo "deploy\compose-wellness-update.path") $out
+Copy-Item (Join-Path $repo "deploy\self-update.sh") (Join-Path $out "app")
 
 # Windows tar cannot store the executable bit, which is why the README runs the script as "bash ./install.sh".
 $tarball = Join-Path $repo "dist\$name.tar.gz"

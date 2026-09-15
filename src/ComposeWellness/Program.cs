@@ -1,10 +1,18 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ComposeWellness.Configuration;
 using ComposeWellness.Models;
 using ComposeWellness.Services;
 using ComposeWellness.Web;
+
+// The root self-update helper runs "ComposeWellness --version" to learn the installed version
+// without talking to the web service, which may be stopped at that point.
+var applicationVersion = ApplicationVersion.FromAssembly();
+if (args.Contains("--version"))
+{
+    Console.WriteLine(applicationVersion.Text);
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +29,7 @@ builder.Services.AddOptions<ComposeWellnessOptions>()
     .Validate(o => Path.IsPathRooted(o.RootDirectory), "ComposeWellness:RootDirectory must be an absolute path.")
     .Validate(o => o.MaxLogLines > 0, "ComposeWellness:MaxLogLines must be greater than zero.")
     .Validate(o => o.RetainedLogFiles >= 0, "ComposeWellness:RetainedLogFiles must not be negative.")
+    .Validate(o => ComposeWellnessOptions.IsValidRepository(o.UpdateRepository), "ComposeWellness:UpdateRepository must be empty or \"owner/repo\".")
     .ValidateOnStart();
 
 builder.Services.AddSingleton<IRootDirectoryProvider, RootDirectoryProvider>();
@@ -29,6 +38,17 @@ builder.Services.AddSingleton<IStackDiscoveryService, StackDiscoveryService>();
 builder.Services.AddSingleton<IStackUpdateService, StackUpdateService>();
 builder.Services.AddSingleton<UpdateLogArchive>();
 builder.Services.AddSingleton<UpdateCoordinator>();
+
+builder.Services.AddSingleton(applicationVersion);
+builder.Services.AddSingleton<ISelfUpdateTrigger, SelfUpdateTrigger>();
+// One instance serves both as the hosted service and as the read model for the API.
+builder.Services.AddSingleton(sp => new ReleaseChecker(
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ComposeWellnessOptions>>(),
+    applicationVersion,
+    new HttpClient { Timeout = TimeSpan.FromSeconds(15) },
+    sp.GetRequiredService<ILogger<ReleaseChecker>>()));
+builder.Services.AddSingleton<IReleaseChecker>(sp => sp.GetRequiredService<ReleaseChecker>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ReleaseChecker>());
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
@@ -51,7 +71,13 @@ app.Lifetime.ApplicationStarted.Register(() =>
 });
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// After a self-update the page reloads itself; without this header the browser could keep the
+// previous release's scripts and styles for days. ETags are still sent, so unchanged files cost
+// one 304 round trip on a localhost connection.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
+});
 
 var api = app.MapGroup("/api");
 
@@ -97,18 +123,54 @@ api.MapGet("/stacks", (IStackDiscoveryService discovery) =>
     }
 });
 
-// The informational version is the <Version> from the project file, possibly followed by
-// "+<commit>" added by the SDK; only the version itself is shown.
-var informationalVersion = typeof(Program).Assembly
-    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
-var applicationVersion = informationalVersion.Split('+')[0];
-
-api.MapGet("/settings", () => new
+api.MapGet("/settings", (IReleaseChecker releases, ISelfUpdateTrigger selfUpdate) => new
 {
     rootDirectory = rootDirectory.Current,
     configuredRootDirectory = rootDirectory.Configured,
     canChangeRootDirectory = rootDirectory.CanChange,
-    version = applicationVersion,
+    version = applicationVersion.Text,
+    updateRepository = releases.Repository,
+    latestVersion = releases.LatestVersion?.ToString(),
+    releaseUrl = releases.ReleaseUrl,
+    updateAvailable = releases.UpdateAvailable,
+    canSelfUpdate = selfUpdate.Enabled,
+});
+
+// Asks the root-owned helper unit to upgrade Compose Wellness to the latest release. The browser
+// cannot choose what gets installed; it can only ask, and only when a newer release is known.
+api.MapPost("/self-update", async (HttpRequest request, IReleaseChecker releases, ISelfUpdateTrigger selfUpdate, CancellationToken cancellationToken) =>
+{
+    if (!HasRequestHeader(request))
+    {
+        return MissingHeader();
+    }
+
+    if (!selfUpdate.Enabled)
+    {
+        return Results.Json(new { error = "Self-update is disabled." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (coordinator.GetStatus().State == UpdateState.Running)
+    {
+        return Results.Conflict(new { error = "Wait for the running update to finish." });
+    }
+
+    if (!releases.UpdateAvailable)
+    {
+        return Results.Conflict(new { error = "No newer version is known." });
+    }
+
+    try
+    {
+        await selfUpdate.RequestAsync(cancellationToken);
+        app.Logger.LogInformation("Self-update to {Version} requested from the web UI.", releases.LatestVersion);
+        return Results.Accepted((string?)null, new { latestVersion = releases.LatestVersion!.ToString() });
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        app.Logger.LogError(ex, "Could not write the self-update trigger file.");
+        return Results.Json(new { error = $"The update could not be requested: {ex.Message}" }, statusCode: StatusCodes.Status500InternalServerError);
+    }
 });
 
 api.MapPut("/settings/root-directory", async (HttpRequest request, RootDirectoryChange change, CancellationToken cancellationToken) =>

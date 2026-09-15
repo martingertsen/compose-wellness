@@ -26,4 +26,4 @@ jobs:
         run: dotnet test ComposeWellness.sln --configuration Release --no-build --verbosity normal
 
       - name: Check shell scripts
-        run: bash -n deploy/install.sh && bash -n deploy/publish.sh
+        run: bash -n deploy/install.sh && bash -n deploy/publish.sh && bash -n deploy/self-update.sh

@@ -64,8 +64,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ env.RELEASE_TAG }}
         run: |
+          (cd artifacts && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS)
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" artifacts/*.tar.gz --clobber
+            gh release upload "$TAG" artifacts/*.tar.gz artifacts/SHA256SUMS --clobber
           else
-            gh release create "$TAG" artifacts/*.tar.gz --title "$TAG" --generate-notes
+            gh release create "$TAG" artifacts/*.tar.gz artifacts/SHA256SUMS --title "$TAG" --generate-notes
           fi

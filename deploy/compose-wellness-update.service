@@ -1,0 +1,14 @@
+# Downloads the latest release of the configured repository and runs its install.sh.
+# Runs as root: replacing /opt/compose-wellness and restarting the web service require it.
+# Output: journalctl -u compose-wellness-update
+
+[Unit]
+Description=Compose Wellness self-update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/compose-wellness/self-update.sh
+# install.sh writes a drop-in overriding both lines when INSTALL_DIR is not the default.
+Environment=INSTALL_DIR=/opt/compose-wellness

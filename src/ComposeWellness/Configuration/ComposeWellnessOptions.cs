@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace ComposeWellness.Configuration;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace ComposeWellness.Configuration;
 /// Every value can also be supplied through environment variables, for example
 /// ComposeWellness__RootDirectory=/opt/stacks.
 /// </summary>
-public sealed class ComposeWellnessOptions
+public sealed partial class ComposeWellnessOptions
 {
     public const string SectionName = "ComposeWellness";
 
@@ -53,4 +55,32 @@ public sealed class ComposeWellnessOptions
     /// Older files are deleted after each update.
     /// </summary>
     public int RetainedLogFiles { get; set; } = 20;
+
+    /// <summary>
+    /// GitHub repository ("owner/repo") whose releases are checked for a newer version and used by
+    /// the self-update. Empty disables the check entirely, for example on hosts without internet
+    /// access or forks that do not publish releases.
+    /// </summary>
+    public string UpdateRepository { get; set; } = "martingertsen/compose-wellness";
+
+    /// <summary>
+    /// Whether the web UI may request a self-update. On by default: the worst an anonymous visitor
+    /// can do with it is upgrade Compose Wellness to the latest release of <see cref="UpdateRepository"/>,
+    /// which is configured by root and never by the browser.
+    /// </summary>
+    public bool AllowSelfUpdate { get; set; } = true;
+
+    /// <summary>
+    /// File whose creation tells the root-owned compose-wellness-update.path unit to start an
+    /// upgrade. Set by the systemd unit, not by appsettings.json. Empty means the helper units are
+    /// not installed and the update button is never shown.
+    /// </summary>
+    public string? SelfUpdateTriggerFile { get; set; }
+
+    /// <summary>Empty, or exactly one "owner/repo" pair of GitHub-safe characters.</summary>
+    public static bool IsValidRepository(string? repository) =>
+        string.IsNullOrEmpty(repository) || RepositoryPattern().IsMatch(repository);
+
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z")]
+    private static partial Regex RepositoryPattern();
 }

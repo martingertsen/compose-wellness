@@ -28,10 +28,25 @@
     rootSave: document.getElementById("root-save"),
     rootCancel: document.getElementById("root-cancel"),
     version: document.getElementById("version"),
+    selfUpdate: document.getElementById("self-update"),
+    selfUpdateText: document.getElementById("self-update-text"),
+    selfUpdateLink: document.getElementById("self-update-link"),
+    selfUpdateButton: document.getElementById("self-update-button"),
   };
 
   // Root directory: shown in the top bar, editable in place when the server allows it.
   let rootDirectory = "";
+  // Version at page load; a different value from /api/settings later means the upgrade landed.
+  let runningVersion = null;
+  // True from the moment the server accepted a self-update until it succeeded or timed out.
+  let selfUpdating = false;
+  // True while an Update All runs; the server refuses a self-update then, so the button follows suit.
+  let updateRunning = false;
+
+  function reflectSelfUpdateButton() {
+    elements.selfUpdateButton.disabled = selfUpdating || updateRunning;
+    elements.selfUpdateButton.title = updateRunning ? "Wait for the running update to finish" : "";
+  }
 
   async function loadSettings() {
     try {
@@ -41,12 +56,14 @@
       }
       const settings = await response.json();
       rootDirectory = settings.rootDirectory;
+      runningVersion = settings.version || null;
       elements.rootPath.textContent = rootDirectory;
       elements.version.textContent = settings.version ? "Compose Wellness " + settings.version + "." : "";
       elements.rootDisplay.disabled = !settings.canChangeRootDirectory;
       elements.rootDisplay.title = settings.canChangeRootDirectory
         ? "Click to change the folder that is scanned for stacks"
         : "Changing the folder is disabled by configuration";
+      renderUpdateNotice(settings);
     } catch (error) {
       elements.rootPath.textContent = "unknown";
       elements.rootDisplay.disabled = true;
@@ -107,6 +124,86 @@
   });
   elements.rootForm.addEventListener("submit", saveRootDirectory);
   loadSettings();
+
+  // Self-update: the server only writes a trigger file; a root-owned systemd unit does the rest
+  // and restarts the service, so this page waits for the version to change and then reloads.
+  function renderUpdateNotice(settings) {
+    if (selfUpdating || !settings.updateAvailable || !settings.latestVersion) {
+      if (!selfUpdating) {
+        elements.selfUpdate.hidden = true;
+      }
+      return;
+    }
+    elements.selfUpdate.classList.remove("error");
+    elements.selfUpdateText.textContent = "Version " + settings.latestVersion + " of Compose Wellness is available.";
+    elements.selfUpdateLink.hidden = !settings.releaseUrl;
+    if (settings.releaseUrl) {
+      elements.selfUpdateLink.href = settings.releaseUrl;
+    }
+    elements.selfUpdateButton.hidden = !settings.canSelfUpdate;
+    reflectSelfUpdateButton();
+    elements.selfUpdate.hidden = false;
+  }
+
+  function setUpdateNotice(text, isError) {
+    elements.selfUpdateText.textContent = text;
+    elements.selfUpdate.classList.toggle("error", Boolean(isError));
+    elements.selfUpdate.hidden = false;
+  }
+
+  async function startSelfUpdate() {
+    const confirmed = window.confirm("Compose Wellness will download the latest release, restart and reload this page. Continue?");
+    if (!confirmed) {
+      return;
+    }
+
+    elements.selfUpdateButton.disabled = true;
+    elements.button.disabled = true;
+    try {
+      const response = await fetch("/api/self-update", { method: "POST", headers: { "X-Requested-With": "ComposeWellness" } });
+      const body = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        setUpdateNotice(body.error || ("The server returned HTTP " + response.status + "."), true);
+        reflectSelfUpdateButton();
+        elements.button.disabled = false;
+        return;
+      }
+      selfUpdating = true;
+      setUpdateNotice("Updating to " + body.latestVersion + ", this takes about a minute. The page reloads when the new version is running.");
+      waitForNewVersion(Date.now() + 3 * 60 * 1000);
+    } catch (error) {
+      setUpdateNotice("Could not reach the server: " + error.message, true);
+      reflectSelfUpdateButton();
+      elements.button.disabled = false;
+    }
+  }
+
+  function waitForNewVersion(deadline) {
+    setTimeout(async function () {
+      try {
+        const response = await fetch("/api/settings", { cache: "no-store" });
+        if (response.ok) {
+          const settings = await response.json();
+          if (settings.version && runningVersion !== null && settings.version !== runningVersion) {
+            window.location.reload();
+            return;
+          }
+        }
+      } catch (error) {
+        // The service is restarting; keep polling.
+      }
+      if (Date.now() < deadline) {
+        waitForNewVersion(deadline);
+        return;
+      }
+      selfUpdating = false;
+      setUpdateNotice("The update did not finish. On the host run: journalctl -u compose-wellness-update", true);
+      reflectSelfUpdateButton();
+      elements.button.disabled = false;
+    }, 2000);
+  }
+
+  elements.selfUpdateButton.addEventListener("click", startSelfUpdate);
 
   // Detected stacks: what Update All would process right now.
   async function loadStacks() {
@@ -289,7 +386,9 @@
     elements.status.textContent = statusLabels[status.state] || status.state;
     elements.status.className = "badge " + status.state;
     elements.currentStack.textContent = status.state === "running" && status.currentStack ? status.currentStack : "";
-    elements.button.disabled = status.state === "running";
+    updateRunning = status.state === "running";
+    elements.button.disabled = updateRunning || selfUpdating;
+    reflectSelfUpdateButton();
 
     if (status.state === "running") {
       setMessage("Update in progress. Closing this page does not stop it.");

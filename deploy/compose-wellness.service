@@ -27,6 +27,8 @@ RestartSec=5
 StateDirectory=compose-wellness
 Environment=HOME=/var/lib/compose-wellness
 Environment=ComposeWellness__DataDirectory=/var/lib/compose-wellness
+# Created by the web UI to request a self-update; watched by compose-wellness-update.path.
+Environment=ComposeWellness__SelfUpdateTriggerFile=/var/lib/compose-wellness/self-update.request
 
 # Full logs of finished updates are written here (created and owned by systemd).
 # Script output may contain details you do not want world-readable, hence the mode.

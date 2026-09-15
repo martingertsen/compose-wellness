@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using ComposeWellness.Services;
 using ComposeWellness.Tests.Fakes;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ComposeWellness.Tests;
 
@@ -10,18 +13,27 @@ namespace ComposeWellness.Tests;
 public sealed class ApiTests : IDisposable
 {
     private readonly TempDirectory _root = new();
+    private readonly FakeReleaseChecker _releases = new();
+    private readonly string _triggerFile;
     private readonly WebApplicationFactory<Program> _factory;
 
     public ApiTests()
     {
+        _triggerFile = Path.Combine(_root.CreateDirectory("state"), "self-update.request");
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ComposeWellness:RootDirectory"] = _root.Path,
                 ["ComposeWellness:LogDirectory"] = null,
                 ["ComposeWellness:DataDirectory"] = _root.CreateDirectory("data"),
                 ["ComposeWellness:AllowRootDirectoryChange"] = "true",
-            })));
+                // Never call GitHub from the tests; the fake below is what the endpoints see.
+                ["ComposeWellness:UpdateRepository"] = "",
+                ["ComposeWellness:SelfUpdateTriggerFile"] = _triggerFile,
+            }));
+            builder.ConfigureTestServices(services => services.AddSingleton<IReleaseChecker>(_releases));
+        });
     }
 
     [Fact]
@@ -33,6 +45,17 @@ public sealed class ApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"state\":\"idle\"", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Static_files_are_served_with_a_no_cache_header()
+    {
+        using var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/app.js");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoCache);
     }
 
     [Fact]
@@ -131,6 +154,131 @@ public sealed class ApiTests : IDisposable
         var response = await client.PostAsync("/api/update", content: null);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Settings_report_update_information()
+    {
+        _releases.LatestVersion = new Version(9, 9, 9);
+        _releases.ReleaseUrl = "https://example.test/release";
+        _releases.UpdateAvailable = true;
+        using var client = _factory.CreateClient();
+
+        var settings = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/settings");
+
+        Assert.Equal("owner/repo", settings.GetProperty("updateRepository").GetString());
+        Assert.Equal("9.9.9", settings.GetProperty("latestVersion").GetString());
+        Assert.Equal("https://example.test/release", settings.GetProperty("releaseUrl").GetString());
+        Assert.True(settings.GetProperty("updateAvailable").GetBoolean());
+        Assert.True(settings.GetProperty("canSelfUpdate").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Self_update_requires_the_request_header()
+    {
+        _releases.UpdateAvailable = true;
+        using var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/api/self-update", content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(File.Exists(_triggerFile));
+    }
+
+    [Fact]
+    public async Task Self_update_without_a_newer_version_is_a_conflict()
+    {
+        _releases.UpdateAvailable = false;
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Requested-With", "ComposeWellness");
+
+        var response = await client.PostAsync("/api/self-update", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("No newer version", await response.Content.ReadAsStringAsync());
+        Assert.False(File.Exists(_triggerFile));
+    }
+
+    [Fact]
+    public async Task Self_update_writes_the_trigger_file()
+    {
+        _releases.LatestVersion = new Version(9, 9, 9);
+        _releases.UpdateAvailable = true;
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Requested-With", "ComposeWellness");
+
+        var response = await client.PostAsync("/api/self-update", content: null);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Contains("\"latestVersion\":\"9.9.9\"", await response.Content.ReadAsStringAsync());
+        Assert.True(File.Exists(_triggerFile));
+    }
+
+    [Fact]
+    public async Task Self_update_is_a_conflict_while_an_update_runs()
+    {
+        _root.CreateFile("webapp/compose.yml");
+        _releases.UpdateAvailable = true;
+        _releases.LatestVersion = new Version(9, 9, 9);
+        var blockingRunner = new BlockingProcessRunner();
+        using var factory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddSingleton<IProcessRunner>(blockingRunner)));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Requested-With", "ComposeWellness");
+
+        var updateResponse = await client.PostAsync("/api/update", content: null);
+        Assert.Equal(HttpStatusCode.Accepted, updateResponse.StatusCode);
+
+        // The update starts on a background task, so give it a short moment to actually reach the
+        // "running" state before asserting the interlock against it.
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        string status;
+        do
+        {
+            status = await client.GetStringAsync("/api/status");
+            if (status.Contains("\"state\":\"running\"", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            await Task.Delay(20);
+        } while (DateTime.UtcNow < deadline);
+        Assert.Contains("\"state\":\"running\"", status);
+
+        var selfUpdateResponse = await client.PostAsync("/api/self-update", content: null);
+        var body = await selfUpdateResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Conflict, selfUpdateResponse.StatusCode);
+        Assert.Contains("Wait for the running update", body);
+        Assert.False(File.Exists(_triggerFile));
+
+        // Let the blocked update finish so the host can shut down cleanly at the end of the test.
+        blockingRunner.Release();
+        var coordinator = factory.Services.GetRequiredService<UpdateCoordinator>();
+        if (coordinator.CurrentRun is { } run)
+        {
+            await run;
+        }
+    }
+
+    [Fact]
+    public async Task Self_update_is_forbidden_when_disabled()
+    {
+        _releases.UpdateAvailable = true;
+        using var factory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ComposeWellness:AllowSelfUpdate"] = "false",
+            })));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Requested-With", "ComposeWellness");
+
+        var response = await client.PostAsync("/api/self-update", content: null);
+        var settings = await client.GetStringAsync("/api/settings");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("\"canSelfUpdate\":false", settings);
+        Assert.False(File.Exists(_triggerFile));
     }
 
     public void Dispose()

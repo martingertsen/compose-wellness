@@ -24,8 +24,10 @@ dotnet publish "${REPO}/src/ComposeWellness/ComposeWellness.csproj" \
     --self-contained true \
     --output "${OUT}/app"
 
-cp "${REPO}/deploy/install.sh" "${REPO}/deploy/compose-wellness.service" "${OUT}/"
-chmod +x "${OUT}/install.sh" "${OUT}/app/ComposeWellness" 2>/dev/null || true
+cp "${REPO}/deploy/install.sh" "${REPO}/deploy/compose-wellness.service" \
+   "${REPO}/deploy/compose-wellness-update.service" "${REPO}/deploy/compose-wellness-update.path" "${OUT}/"
+cp "${REPO}/deploy/self-update.sh" "${OUT}/app/"
+chmod +x "${OUT}/install.sh" "${OUT}/app/ComposeWellness" "${OUT}/app/self-update.sh" 2>/dev/null || true
 
 tar -czf "${REPO}/dist/${NAME}.tar.gz" -C "${REPO}/dist" "${NAME}"
 echo "Created ${REPO}/dist/${NAME}.tar.gz"
