@@ -1,0 +1,47 @@
+# systemd unit for Compose Wellness.
+#
+# Installed by deploy/install.sh, which also writes a drop-in file
+# (/etc/systemd/system/compose-wellness.service.d/10-install.conf) with the site specific
+# settings: service user, Docker root directory and listen address. Edit that drop-in
+# rather than this file so upgrades do not overwrite your configuration.
+
+[Unit]
+Description=Compose Wellness Web Service
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=compose-wellness
+# No Group= on purpose: systemd uses the primary group of whichever user the drop-in selects.
+# Membership of the docker group is what allows the service to talk to the Docker daemon.
+SupplementaryGroups=docker
+WorkingDirectory=/opt/compose-wellness
+ExecStart=/opt/compose-wellness/ComposeWellness
+Restart=on-failure
+RestartSec=5
+
+# The Docker CLI stores its config below HOME; StateDirectory creates and owns this path.
+# Settings changed in the web UI (settings.json) are stored there as well, so they survive upgrades.
+StateDirectory=compose-wellness
+Environment=HOME=/var/lib/compose-wellness
+Environment=ComposeWellness__DataDirectory=/var/lib/compose-wellness
+
+# Full logs of finished updates are written here (created and owned by systemd).
+# Script output may contain details you do not want world-readable, hence the mode.
+LogsDirectory=compose-wellness
+LogsDirectoryMode=0750
+Environment=ComposeWellness__LogDirectory=/var/log/compose-wellness
+
+# Defaults, overridden by the drop-in written during installation.
+Environment=ComposeWellness__RootDirectory=/opt/stacks
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
+
+# On stop the service cancels a running update and kills its child processes itself.
+# "mixed" sends SIGTERM to the service only and SIGKILL to anything left after the timeout.
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
