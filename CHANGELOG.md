@@ -2,6 +2,11 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.2 - 2026-09-16
+
+- The live console shows one line per image layer during `docker compose pull`, overwritten as
+  the download progresses, instead of a new line for every progress step. Log files are unchanged.
+
 ## 1.1.1 - 2026-09-15
 
 - Maintenance release used to exercise the new self-update button. No functional changes.

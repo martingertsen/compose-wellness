@@ -92,6 +92,9 @@ later output from that process is not shown.
 - The update is not tied to the browser connection. Close the tab and it keeps running.
 - Reopening the page while an update runs shows the current state, replays the retained log and
   continues streaming.
+- Compose reports image pulls as one line per progress step and layer. The console shows one
+  live line per layer that is overwritten as the download and extraction progress, so a pull
+  takes a handful of lines instead of dozens. The log file on disk keeps every line.
 - The most recent update stays visible until the next one starts.
 - The top bar shows the folder being scanned. With `AllowRootDirectoryChange` enabled, clicking
   it lets you enter another absolute path on the Docker host; the change is saved in

@@ -340,8 +340,17 @@
     elements.message.classList.toggle("error", Boolean(isError));
   }
 
+  // Compose prints a new line for every progress step of every image layer ("<id> Downloading
+  // 6.9MB", "<id> Extracting 15MB", ...). The server log keeps them all; the console shows one
+  // live line per layer instead, the way a terminal would overwrite it. Layers are keyed by the
+  // 12 character id at the start of the line, and the map is forgotten at every app line so a
+  // later command that mentions the same id gets a fresh line.
+  const layerLinePattern = /^\s*([0-9a-f]{12})\s+\S/;
+  const layerLines = new Map();
+
   function clearConsole() {
     elements.console.textContent = "";
+    layerLines.clear();
   }
 
   function appendLogEntries(entries) {
@@ -351,17 +360,34 @@
 
     const fragment = document.createDocumentFragment();
     for (const entry of entries) {
-      const line = document.createElement("span");
-      if (entry.source === "app") {
-        line.className = entry.text.startsWith("===") ? "app heading" : "app";
-        line.textContent = entry.text === "" ? "" : "[" + formatTime(entry.timestamp) + "] " + entry.text;
-      } else {
-        line.className = "out";
-        line.textContent = entry.text;
+      lastSequence = Math.max(lastSequence, entry.sequence);
+
+      if (entry.source !== "app") {
+        const match = layerLinePattern.exec(entry.text);
+        if (match) {
+          const existing = layerLines.get(match[1]);
+          if (existing) {
+            existing.textContent = entry.text;
+            continue;
+          }
+        }
+        const out = document.createElement("span");
+        out.className = "out";
+        out.textContent = entry.text;
+        if (match) {
+          layerLines.set(match[1], out);
+        }
+        fragment.appendChild(out);
+        fragment.appendChild(document.createTextNode("\n"));
+        continue;
       }
+
+      layerLines.clear();
+      const line = document.createElement("span");
+      line.className = entry.text.startsWith("===") ? "app heading" : "app";
+      line.textContent = entry.text === "" ? "" : "[" + formatTime(entry.timestamp) + "] " + entry.text;
       fragment.appendChild(line);
       fragment.appendChild(document.createTextNode("\n"));
-      lastSequence = Math.max(lastSequence, entry.sequence);
     }
 
     elements.console.appendChild(fragment);
