@@ -166,7 +166,8 @@ Pressing it:
 4. The page polls until the new version answers, then reloads. If nothing happens within three
    minutes it says so; check `journalctl -u compose-wellness-update` on the host.
 
-The check runs 10 seconds after the service starts and every 6 hours, against
+The check runs 10 seconds after the service starts, every 6 hours, and when the page is opened
+more than 10 minutes after the previous check, against
 `https://api.github.com/repos/<repository>/releases/latest`. On a host without internet access
 the check fails quietly and nothing is shown.
 
@@ -368,7 +369,7 @@ what runs during that update. Access to the Docker socket is equivalent to root 
 |--------|-----------------------------|-------------|
 | `GET`  | `/api/status`               | Current state, results so far and summary when finished. |
 | `GET`  | `/api/stacks`               | Directories the next update would process (those with an `update.sh` or a Compose file), without asking Docker. |
-| `GET`  | `/api/settings`             | Current and configured root directory, whether it can be changed, the application version, and the latest release (`latestVersion`, `releaseUrl`, `updateAvailable`, `canSelfUpdate`, `updateRepository`). |
+| `GET`  | `/api/settings`             | Current and configured root directory, whether it can be changed, the application version, and the latest release (`latestVersion`, `releaseUrl`, `updateAvailable`, `canSelfUpdate`, `updateRepository`, `checking`). |
 | `PUT`  | `/api/settings/root-directory` | Body `{ "rootDirectory": "/abs/path" }`. Requires the `X-Requested-With: ComposeWellness` header. `400` for a missing directory, `403` when disabled, `409` while an update runs. |
 | `POST` | `/api/update`               | Starts an update. Requires the header `X-Requested-With: ComposeWellness` (CSRF guard), otherwise `403`. Returns `202 Accepted`, or `409 Conflict` when one is already running. |
 | `POST` | `/api/self-update`          | Asks the root helper to upgrade to the latest release. Requires the `X-Requested-With: ComposeWellness` header. `202` with `{ "latestVersion": "1.2.0" }`, `403` when disabled or the helper is not installed, `409` while an update runs or when no newer version is known. |

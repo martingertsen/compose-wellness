@@ -48,7 +48,8 @@
     elements.selfUpdateButton.title = updateRunning ? "Wait for the running update to finish" : "";
   }
 
-  async function loadSettings() {
+  async function loadSettings(attempt) {
+    attempt = attempt || 0;
     try {
       const response = await fetch("/api/settings");
       if (!response.ok) {
@@ -64,6 +65,11 @@
         ? "Click to change the folder that is scanned for stacks"
         : "Changing the folder is disabled by configuration";
       renderUpdateNotice(settings);
+      // The server started a fresh release check because its result was stale; ask again a few
+      // times so a release published minutes ago shows up without waiting for the next timer run.
+      if (settings.checking && !settings.updateAvailable && attempt < 5) {
+        setTimeout(function () { loadSettings(attempt + 1); }, 3000);
+      }
     } catch (error) {
       elements.rootPath.textContent = "unknown";
       elements.rootDisplay.disabled = true;

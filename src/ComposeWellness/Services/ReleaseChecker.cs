@@ -23,6 +23,9 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
     private string? _url;
     private string? _lastError;
     private string? _lastLoggedError;
+    private DateTimeOffset? _lastCheckedAt;
+    private Task? _pendingCheck;
+    private CancellationToken _stoppingToken = CancellationToken.None;
 
     public ReleaseChecker(IOptions<ComposeWellnessOptions> options, ApplicationVersion running, HttpClient http, ILogger<ReleaseChecker> logger)
     {
@@ -48,8 +51,52 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
 
     public string? LastError { get { lock (_gate) { return _lastError; } } }
 
+    public DateTimeOffset? LastCheckedAt { get { lock (_gate) { return _lastCheckedAt; } } }
+
+    /// <summary>The check started by <see cref="RequestCheckIfStale"/>, so tests can await it.</summary>
+    internal Task? PendingCheck { get { lock (_gate) { return _pendingCheck; } } }
+
+    public bool RequestCheckIfStale(TimeSpan maxAge)
+    {
+        if (Repository.Length == 0)
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            if (_pendingCheck is { IsCompleted: false })
+            {
+                return true;
+            }
+
+            if (_lastCheckedAt is { } last && DateTimeOffset.UtcNow - last < maxAge)
+            {
+                return false;
+            }
+
+            // Opening the page shortly after a release should show the update without waiting
+            // for the next scheduled check. One check per maxAge keeps a page reload storm far
+            // below GitHub's unauthenticated rate limit.
+            var token = _stoppingToken;
+            _pendingCheck = Task.Run(async () =>
+            {
+                try
+                {
+                    await CheckAsync(token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Shutdown while a check was running.
+                }
+            });
+            return true;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _stoppingToken = stoppingToken;
         if (Repository.Length == 0)
         {
             _logger.LogInformation("Update check disabled: ComposeWellness:UpdateRepository is empty.");
@@ -105,6 +152,7 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
                 _url = url;
                 _lastError = null;
                 _lastLoggedError = null;
+                _lastCheckedAt = DateTimeOffset.UtcNow;
             }
 
             _logger.LogInformation("Latest release of {Repository} is {Latest}; running {Running}.", Repository, version, _running.Text);
@@ -128,6 +176,8 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
             _lastError = message;
             firstTime = _lastLoggedError != message;
             _lastLoggedError = message;
+            // A failed check still counts as a check, otherwise an offline host would retry on every page load.
+            _lastCheckedAt = DateTimeOffset.UtcNow;
         }
 
         // The same failure repeating every six hours on an offline host is not worth a journal line each time.

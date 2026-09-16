@@ -2,6 +2,12 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.3 - 2026-09-16
+
+- Opening the page more than 10 minutes after the previous release check starts a new check, so
+  a release published minutes ago shows up right away instead of after the 6 hour timer.
+  `GET /api/settings` reports `checking` while that check runs.
+
 ## 1.1.2 - 2026-09-16
 
 - The live console shows one line per image layer during `docker compose pull`, overwritten as

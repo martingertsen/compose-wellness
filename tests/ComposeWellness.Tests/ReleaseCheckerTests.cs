@@ -96,4 +96,49 @@ public sealed class ReleaseCheckerTests
         Assert.Empty(handler.Requests);
         Assert.False(checker.UpdateAvailable);
     }
+
+    [Fact]
+    public async Task Stale_request_starts_a_check_and_a_fresh_result_does_not()
+    {
+        var checker = Create("1.0.0", HttpStatusCode.OK, """{ "tag_name": "v1.1.0", "html_url": "u" }""", out var handler);
+        Assert.Null(checker.LastCheckedAt);
+
+        Assert.True(checker.RequestCheckIfStale(TimeSpan.FromMinutes(10)));
+        await checker.PendingCheck!;
+
+        Assert.NotNull(checker.LastCheckedAt);
+        Assert.True(checker.UpdateAvailable);
+        Assert.Single(handler.Requests);
+
+        Assert.False(checker.RequestCheckIfStale(TimeSpan.FromMinutes(10)));
+        Assert.Single(handler.Requests);
+
+        Assert.True(checker.RequestCheckIfStale(TimeSpan.Zero));
+        await checker.PendingCheck!;
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Failed_check_still_counts_as_checked()
+    {
+        var checker = Create("1.0.0", HttpStatusCode.InternalServerError, """{ "message": "boom" }""", out var handler);
+
+        Assert.True(checker.RequestCheckIfStale(TimeSpan.FromMinutes(10)));
+        await checker.PendingCheck!;
+
+        Assert.NotNull(checker.LastCheckedAt);
+        Assert.NotNull(checker.LastError);
+        Assert.False(checker.RequestCheckIfStale(TimeSpan.FromMinutes(10)));
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public void Disabled_checker_never_starts_a_check()
+    {
+        var checker = Create("1.0.0", HttpStatusCode.OK, """{ "tag_name": "v9.9.9", "html_url": "u" }""", out var handler, repository: "");
+
+        Assert.False(checker.RequestCheckIfStale(TimeSpan.Zero));
+        Assert.Null(checker.PendingCheck);
+        Assert.Empty(handler.Requests);
+    }
 }

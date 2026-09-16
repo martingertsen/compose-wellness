@@ -16,4 +16,13 @@ public interface IReleaseChecker
 
     /// <summary>Why the last check failed, or null when it succeeded or never ran.</summary>
     string? LastError { get; }
+
+    /// <summary>When the last check finished, successfully or not; null before the first one.</summary>
+    DateTimeOffset? LastCheckedAt { get; }
+
+    /// <summary>
+    /// Starts a background check when none has run within <paramref name="maxAge"/>. Returns true
+    /// while a check is in progress, so a caller can ask again shortly for the fresh result.
+    /// </summary>
+    bool RequestCheckIfStale(TimeSpan maxAge);
 }

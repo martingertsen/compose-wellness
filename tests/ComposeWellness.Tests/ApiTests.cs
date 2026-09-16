@@ -171,6 +171,7 @@ public sealed class ApiTests : IDisposable
         Assert.Equal("https://example.test/release", settings.GetProperty("releaseUrl").GetString());
         Assert.True(settings.GetProperty("updateAvailable").GetBoolean());
         Assert.True(settings.GetProperty("canSelfUpdate").GetBoolean());
+        Assert.False(settings.GetProperty("checking").GetBoolean());
     }
 
     [Fact]

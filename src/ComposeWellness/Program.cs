@@ -134,6 +134,9 @@ api.MapGet("/settings", (IReleaseChecker releases, ISelfUpdateTrigger selfUpdate
     releaseUrl = releases.ReleaseUrl,
     updateAvailable = releases.UpdateAvailable,
     canSelfUpdate = selfUpdate.Enabled,
+    // Reading the settings also refreshes a stale release check in the background, so a page
+    // opened minutes after a release shows the update without waiting for the 6 hour timer.
+    checking = releases.RequestCheckIfStale(TimeSpan.FromMinutes(10)),
 });
 
 // Asks the root-owned helper unit to upgrade Compose Wellness to the latest release. The browser
