@@ -2,6 +2,11 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.6 - 2026-09-17
+
+- Wording: the panel is now "Detected stack folders" and the result table column "Stack folder",
+  since every folder below the root is listed and a skipped folder is not necessarily a stack.
+
 ## 1.1.5 - 2026-09-17
 
 - The update notice moved from above the footer to the very top of the page, above the title bar.
