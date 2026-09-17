@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ComposeWellness</AssemblyName>
     <RootNamespace>ComposeWellness</RootNamespace>
-    <Version>1.1.6</Version>
+    <Version>1.1.7</Version>
     <!-- No ICU dependency on the Linux host and no localized resource folders in the publish output. -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

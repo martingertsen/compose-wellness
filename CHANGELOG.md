@@ -2,6 +2,11 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.7 - 2026-09-17
+
+- The update notice is a full-width banner above the title bar, matching its width and padding,
+  with an accent line along the bottom edge.
+
 ## 1.1.6 - 2026-09-17
 
 - Wording: the panel is now "Detected stack folders" and the result table column "Stack folder",
