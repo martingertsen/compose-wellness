@@ -418,6 +418,13 @@ button:disabled {
   border-bottom: 1px solid var(--border);
 }
 
+/* Right-hand side of a panel header: the follow checkbox plus the console tool buttons. */
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .autoscroll {
   font-size: 0.85rem;
   color: var(--muted);

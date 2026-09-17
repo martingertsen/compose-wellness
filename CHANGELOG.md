@@ -2,6 +2,11 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.4 - 2026-09-17
+
+- Two icon buttons next to "Follow output": copy the console text to the clipboard, and clear
+  the console on this page (the server log is untouched and replayed on reload).
+
 ## 1.1.3 - 2026-09-16
 
 - Opening the page more than 10 minutes after the previous release check starts a new check, so

@@ -95,7 +95,9 @@ later output from that process is not shown.
 - Compose reports image pulls as one line per progress step and layer. The console shows one
   live line per layer that is overwritten as the download and extraction progress, so a pull
   takes a handful of lines instead of dozens. The log file on disk keeps every line.
-- The most recent update stays visible until the next one starts.
+- The most recent update stays visible until the next one starts. The two icons next to
+  "Follow output" copy the console text to the clipboard and clear the console on this page;
+  clearing does not touch the server log, which comes back on the next reload.
 - The top bar shows the folder being scanned. With `AllowRootDirectoryChange` enabled, clicking
   it lets you enter another absolute path on the Docker host; the change is saved in
   `settings.json` in the data directory, survives restarts and upgrades, and refreshes the stack

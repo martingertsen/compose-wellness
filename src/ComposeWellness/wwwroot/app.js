@@ -8,6 +8,8 @@
     message: document.getElementById("message"),
     console: document.getElementById("console"),
     autoscroll: document.getElementById("autoscroll"),
+    copyConsole: document.getElementById("copy-console"),
+    clearConsole: document.getElementById("clear-console"),
     summary: document.getElementById("summary"),
     summaryTitle: document.getElementById("summary-title"),
     countSuccess: document.getElementById("count-success"),
@@ -269,6 +271,47 @@
   }
 
   elements.refreshStacks.addEventListener("click", loadStacks);
+
+  // Console tools. Clearing only affects this page: the server keeps its log and replays it on
+  // the next reconnect or reload. Copying falls back to the old execCommand path because
+  // navigator.clipboard only exists on https:// and localhost, not on a plain http:// LAN address.
+  function clearConsoleOnPage() {
+    clearConsole();
+    setMessage("Console cleared on this page. Reloading brings the retained log back.");
+  }
+
+  async function copyConsoleToClipboard() {
+    const text = elements.console.textContent;
+    if (text.length === 0) {
+      setMessage("The console is empty.", true);
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        const copied = document.execCommand("copy");
+        document.body.removeChild(area);
+        if (!copied) {
+          throw new Error("the browser refused the copy command");
+        }
+      }
+      setMessage("Console output copied to the clipboard.");
+    } catch (error) {
+      setMessage("Could not copy the console output: " + error.message, true);
+    }
+  }
+
+  elements.clearConsole.addEventListener("click", clearConsoleOnPage);
+  elements.copyConsole.addEventListener("click", copyConsoleToClipboard);
   loadStacks();
 
   // Theme: follow the browser unless the user toggled manually during this browser session.

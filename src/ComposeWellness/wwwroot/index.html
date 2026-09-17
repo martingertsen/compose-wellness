@@ -69,7 +69,15 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Live console output</h2>
-        <label class="autoscroll"><input id="autoscroll" type="checkbox" checked> Follow output</label>
+        <div class="panel-actions">
+          <label class="autoscroll"><input id="autoscroll" type="checkbox" checked> Follow output</label>
+          <button id="copy-console" class="icon-button" type="button" aria-label="Copy the console output to the clipboard" title="Copy to clipboard">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          </button>
+          <button id="clear-console" class="icon-button" type="button" aria-label="Clear the console on this page" title="Clear console">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
+        </div>
       </div>
       <pre id="console" class="console" aria-live="polite"></pre>
     </section>
