@@ -2,6 +2,12 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.5 - 2026-09-17
+
+- The update notice moved from above the footer to the very top of the page, above the title bar.
+- New "Ignore this version" link in the notice. It hides the notice in that browser until a newer
+  release exists; stored in the browser, not on the server.
+
 ## 1.1.4 - 2026-09-17
 
 - Two icon buttons next to "Follow output": copy the console text to the clipboard, and clear
@@ -24,7 +30,7 @@ All notable changes to Compose Wellness. Versions follow [Semantic Versioning](h
 
 ## 1.1.0 - 2026-09-15
 
-- The page checks GitHub for a newer release and shows the available version above the footer.
+- The page checks GitHub for a newer release and shows the available version above the footer (moved to the top of the page in 1.1.5).
 - **Update Compose Wellness** button: a root-owned systemd path unit installed
   by `install.sh` downloads the latest release and runs its `install.sh`. No console needed.
   Configurable with `ALLOW_SELF_UPDATE` (default true) and `UPDATE_REPOSITORY` (default

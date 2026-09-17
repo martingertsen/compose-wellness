@@ -152,8 +152,10 @@ Releases are built by GitHub Actions from the tagged source; see `.github/workfl
 ### Update from the web UI
 
 When a newer release exists on GitHub, the page shows "Version x.y.z of Compose Wellness is
-available." above the footer, with a link to the release notes and the button
-**Update Compose Wellness**. The button is disabled while an update of your stacks is running.
+available." at the very top of the page, with a link to the release notes, the button
+**Update Compose Wellness** and a small "Ignore this version" link. The button is disabled while
+an update of your stacks is running. Ignoring hides the notice in that browser until a newer
+release exists.
 Pressing it:
 
 1. The web service writes `/var/lib/compose-wellness/self-update.request`. That is all it can do:

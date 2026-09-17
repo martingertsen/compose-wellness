@@ -22,6 +22,17 @@
   </script>
 </head>
 <body>
+  <section id="self-update" class="self-update" hidden aria-live="polite">
+    <div class="self-update-box">
+      <span id="self-update-text"></span>
+      <span class="self-update-actions">
+        <a id="self-update-link" class="self-update-link" target="_blank" rel="noopener" hidden>Release notes</a>
+        <button id="self-update-button" type="button" hidden>Update Compose Wellness</button>
+        <a id="self-update-ignore" class="self-update-ignore" href="#" title="Hide this notice until the next release">Ignore this version</a>
+      </span>
+    </div>
+  </section>
+
   <header class="topbar">
     <div class="brand-block">
       <h1 class="brand"><img src="icon.png" alt="" class="logo" width="32" height="32"> Compose Wellness</h1>
@@ -104,16 +115,6 @@
       </div>
     </section>
   </main>
-
-  <section id="self-update" class="self-update" hidden aria-live="polite">
-    <div class="self-update-box">
-      <span id="self-update-text"></span>
-      <span class="self-update-actions">
-        <a id="self-update-link" class="self-update-link" target="_blank" rel="noopener" hidden>Release notes</a>
-        <button id="self-update-button" type="button" hidden>Update Compose Wellness</button>
-      </span>
-    </div>
-  </section>
 
   <footer class="footer">
     <span id="version" class="version"></span>

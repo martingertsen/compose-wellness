@@ -33,6 +33,7 @@
     selfUpdate: document.getElementById("self-update"),
     selfUpdateText: document.getElementById("self-update-text"),
     selfUpdateLink: document.getElementById("self-update-link"),
+    selfUpdateIgnore: document.getElementById("self-update-ignore"),
     selfUpdateButton: document.getElementById("self-update-button"),
   };
 
@@ -135,13 +136,28 @@
 
   // Self-update: the server only writes a trigger file; a root-owned systemd unit does the rest
   // and restarts the service, so this page waits for the version to change and then reloads.
+  // "Ignore this version" is remembered per browser. A newer release has a different version
+  // string, so it shows the notice again without any expiry logic.
+  const ignoredVersionKey = "ignoredUpdateVersion";
+  let latestVersionShown = null;
+
+  function ignoredVersion() {
+    try {
+      return localStorage.getItem(ignoredVersionKey);
+    } catch (error) {
+      return null;
+    }
+  }
+
   function renderUpdateNotice(settings) {
-    if (selfUpdating || !settings.updateAvailable || !settings.latestVersion) {
+    const ignored = settings.latestVersion && settings.latestVersion === ignoredVersion();
+    if (selfUpdating || !settings.updateAvailable || !settings.latestVersion || ignored) {
       if (!selfUpdating) {
         elements.selfUpdate.hidden = true;
       }
       return;
     }
+    latestVersionShown = settings.latestVersion;
     elements.selfUpdate.classList.remove("error");
     elements.selfUpdateText.textContent = "Version " + settings.latestVersion + " of Compose Wellness is available.";
     elements.selfUpdateLink.hidden = !settings.releaseUrl;
@@ -212,6 +228,22 @@
   }
 
   elements.selfUpdateButton.addEventListener("click", startSelfUpdate);
+
+  function ignoreThisVersion(event) {
+    event.preventDefault();
+    if (!latestVersionShown) {
+      return;
+    }
+    try {
+      localStorage.setItem(ignoredVersionKey, latestVersionShown);
+    } catch (error) {
+      // Storage unavailable: the notice stays hidden until the page is reloaded.
+    }
+    elements.selfUpdate.hidden = true;
+    setMessage("Version " + latestVersionShown + " is ignored in this browser. The notice returns for the next release.");
+  }
+
+  elements.selfUpdateIgnore.addEventListener("click", ignoreThisVersion);
 
   // Detected stacks: what Update All would process right now.
   async function loadStacks() {
