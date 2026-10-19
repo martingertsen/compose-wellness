@@ -216,6 +216,47 @@ public sealed class ApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Single_stack_update_of_an_unknown_folder_is_not_found()
+    {
+        _root.CreateFile("webapp/compose.yml");
+        _root.CreateDirectory("misc-files");
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Requested-With", "ComposeWellness");
+
+        var unknown = await client.PostAsync("/api/update?stack=nope", content: null);
+        var notAStack = await client.PostAsync("/api/update?stack=misc-files", content: null);
+        var traversal = await client.PostAsync("/api/update?stack=..%2Fetc", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, notAStack.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, traversal.StatusCode);
+        Assert.Contains("\"state\":\"idle\"", await client.GetStringAsync("/api/status"));
+    }
+
+    [Fact]
+    public async Task Single_stack_update_runs_only_the_named_folder()
+    {
+        _root.CreateFile("backend/compose.yml");
+        _root.CreateFile("webapp/compose.yml");
+        // "ps -q --status running" returns nothing, so the stack is skipped as stopped: enough to
+        // prove which folders the run touched without starting Docker.
+        var runner = new FakeProcessRunner().On("ps", 0, "");
+        using var factory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddSingleton<IProcessRunner>(runner)));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Requested-With", "ComposeWellness");
+
+        var response = await client.PostAsync("/api/update?stack=webapp", content: null);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        await factory.Services.GetRequiredService<UpdateCoordinator>().CurrentRun!;
+
+        var status = await client.GetStringAsync("/api/status");
+        Assert.Contains("\"name\":\"webapp\"", status);
+        Assert.DoesNotContain("\"name\":\"backend\"", status);
+        Assert.All(runner.Requests, r => Assert.EndsWith("webapp", r.WorkingDirectory));
+    }
+
+    [Fact]
     public async Task Self_update_is_a_conflict_while_an_update_runs()
     {
         _root.CreateFile("webapp/compose.yml");

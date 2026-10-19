@@ -207,6 +207,47 @@ h2 {
   font-size: 0.85rem;
 }
 
+.stack-chip {
+  position: relative;
+}
+
+/* Per-folder update button. Absolutely positioned over the chip's right edge so that showing it
+   on hover never changes the layout; it may overlap the next chip for as long as it is visible. */
+.stack-update {
+  position: absolute;
+  top: 50%;
+  right: -0.55rem;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease-in-out;
+}
+
+.stack-chip:hover .stack-update,
+.stack-chip:focus-within .stack-update {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.stack-update svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .stack-chip .tag {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 0.7rem;

@@ -104,7 +104,8 @@ later output from that process is not shown.
   list. It is off by default because the page has no authentication.
 - The page lists the stacks the next update would process (directories with an `update.sh` or a
   Compose file). The refresh button re-reads the directory. Whether a stack is stopped is only
-  determined during the update itself.
+  determined during the update itself. Hovering a stack folder shows a small update icon
+  that updates only that folder, with the same procedure and log as **Update All**.
 - The page follows the browser's light or dark mode. The toggle in the top right corner
   overrides it for the current browser session only.
 
@@ -375,7 +376,7 @@ what runs during that update. Access to the Docker socket is equivalent to root 
 | `GET`  | `/api/stacks`               | Directories the next update would process (those with an `update.sh` or a Compose file), without asking Docker. |
 | `GET`  | `/api/settings`             | Current and configured root directory, whether it can be changed, the application version, and the latest release (`latestVersion`, `releaseUrl`, `updateAvailable`, `canSelfUpdate`, `updateRepository`, `checking`). |
 | `PUT`  | `/api/settings/root-directory` | Body `{ "rootDirectory": "/abs/path" }`. Requires the `X-Requested-With: ComposeWellness` header. `400` for a missing directory, `403` when disabled, `409` while an update runs. |
-| `POST` | `/api/update`               | Starts an update. Requires the header `X-Requested-With: ComposeWellness` (CSRF guard), otherwise `403`. Returns `202 Accepted`, or `409 Conflict` when one is already running. |
+| `POST` | `/api/update`               | Starts an update. Optional `?stack=<folder name>` updates only that stack folder; the name must match a folder the stack list currently shows, otherwise `404`. Requires the header `X-Requested-With: ComposeWellness` (CSRF guard), otherwise `403`. Returns `202 Accepted`, or `409 Conflict` when one is already running. |
 | `POST` | `/api/self-update`          | Asks the root helper to upgrade to the latest release. Requires the `X-Requested-With: ComposeWellness` header. `202` with `{ "latestVersion": "1.2.0" }`, `403` when disabled or the helper is not installed, `409` while an update runs or when no newer version is known. |
 | `GET`  | `/api/log?after=<sequence>` | Retained log lines with a sequence number greater than `after`. |
 | `GET`  | `/api/events?after=<sequence>` | Server-Sent Events stream: a `status` event, replay of retained `log` events, then live events. Browsers resume with the standard `Last-Event-ID` header. |

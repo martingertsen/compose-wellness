@@ -46,9 +46,14 @@
   // True while an Update All runs; the server refuses a self-update then, so the button follows suit.
   let updateRunning = false;
 
-  function reflectSelfUpdateButton() {
+  // One place decides whether anything that starts work may be pressed: the self-update button
+  // and the per-folder update buttons are all blocked while an update or a self-update runs.
+  function reflectUpdateButtons() {
     elements.selfUpdateButton.disabled = selfUpdating || updateRunning;
     elements.selfUpdateButton.title = updateRunning ? "Wait for the running update to finish" : "";
+    for (const button of elements.stacks.querySelectorAll(".stack-update")) {
+      button.disabled = selfUpdating || updateRunning;
+    }
   }
 
   async function loadSettings(attempt) {
@@ -165,7 +170,7 @@
       elements.selfUpdateLink.href = settings.releaseUrl;
     }
     elements.selfUpdateButton.hidden = !settings.canSelfUpdate;
-    reflectSelfUpdateButton();
+    reflectUpdateButtons();
     elements.selfUpdate.hidden = false;
   }
 
@@ -188,7 +193,7 @@
       const body = await response.json().catch(function () { return {}; });
       if (!response.ok) {
         setUpdateNotice(body.error || ("The server returned HTTP " + response.status + "."), true);
-        reflectSelfUpdateButton();
+        reflectUpdateButtons();
         elements.button.disabled = false;
         return;
       }
@@ -197,7 +202,7 @@
       waitForNewVersion(Date.now() + 3 * 60 * 1000);
     } catch (error) {
       setUpdateNotice("Could not reach the server: " + error.message, true);
-      reflectSelfUpdateButton();
+      reflectUpdateButtons();
       elements.button.disabled = false;
     }
   }
@@ -222,7 +227,7 @@
       }
       selfUpdating = false;
       setUpdateNotice("The update did not finish. On the host run: journalctl -u compose-wellness-update", true);
-      reflectSelfUpdateButton();
+      reflectUpdateButtons();
       elements.button.disabled = false;
     }, 2000);
   }
@@ -290,6 +295,17 @@
         tag.textContent = "script";
         chip.appendChild(tag);
       }
+      // Hover button that updates this folder alone. It is absolutely positioned (see style.css),
+      // so showing it overlaps the neighbouring chip instead of pushing the list around.
+      const update = document.createElement("button");
+      update.type = "button";
+      update.className = "stack-update";
+      update.title = "Update " + stack.name + " only";
+      update.setAttribute("aria-label", "Update " + stack.name + " only");
+      update.disabled = updateRunning || selfUpdating;
+      update.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>';
+      update.addEventListener("click", function () { startUpdate(stack.name); });
+      chip.appendChild(update);
       elements.stacks.appendChild(chip);
     }
   }
@@ -495,7 +511,7 @@
     elements.currentStack.textContent = status.state === "running" && status.currentStack ? status.currentStack : "";
     updateRunning = status.state === "running";
     elements.button.disabled = updateRunning || selfUpdating;
-    reflectSelfUpdateButton();
+    reflectUpdateButtons();
 
     if (status.state === "running") {
       setMessage("Update in progress. Closing this page does not stop it.");
@@ -570,25 +586,36 @@
     });
   }
 
-  async function startUpdate() {
+  // Without a stack name every stack folder is updated; with one, only that folder.
+  async function startUpdate(stack) {
     elements.button.disabled = true;
-    setMessage("Starting update...");
+    updateRunning = true;
+    reflectUpdateButtons();
+    setMessage(stack ? "Starting update of " + stack + "..." : "Starting update...");
 
+    const url = stack ? "/api/update?stack=" + encodeURIComponent(stack) : "/api/update";
     try {
       // The server requires this header as a CSRF guard; see Program.cs.
-      const response = await fetch("/api/update", { method: "POST", headers: { "X-Requested-With": "ComposeWellness" } });
+      const response = await fetch(url, { method: "POST", headers: { "X-Requested-With": "ComposeWellness" } });
       if (response.status === 409) {
         setMessage("An update is already running.", true);
       } else if (!response.ok) {
-        setMessage("The server returned HTTP " + response.status + ".", true);
-        elements.button.disabled = false;
+        const body = await response.json().catch(function () { return {}; });
+        setMessage(body.error || ("The server returned HTTP " + response.status + "."), true);
+        resetAfterFailedStart();
       }
     } catch (error) {
       setMessage("Could not reach the server: " + error.message, true);
-      elements.button.disabled = false;
+      resetAfterFailedStart();
     }
   }
 
-  elements.button.addEventListener("click", startUpdate);
+  function resetAfterFailedStart() {
+    updateRunning = false;
+    elements.button.disabled = selfUpdating;
+    reflectUpdateButtons();
+  }
+
+  elements.button.addEventListener("click", function () { startUpdate(); });
   connect();
 })();

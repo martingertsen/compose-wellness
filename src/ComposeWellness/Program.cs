@@ -89,14 +89,34 @@ static IResult MissingHeader() => Results.Json(new { error = "Missing X-Requeste
 
 api.MapGet("/status", () => coordinator.GetStatus());
 
-api.MapPost("/update", (HttpRequest request) =>
+// Without a query string every stack folder is updated. With ?stack=<name> only that folder is,
+// and only if discovery currently lists it as a stack: the browser can name a folder, never a path.
+api.MapPost("/update", (HttpRequest request, string? stack, IStackDiscoveryService discovery) =>
 {
     if (!HasRequestHeader(request))
     {
         return MissingHeader();
     }
 
-    return coordinator.TryStartUpdate()
+    if (stack is not null)
+    {
+        bool known;
+        try
+        {
+            known = discovery.DiscoverStacks().Any(s => s.Kind != StackKind.None && string.Equals(s.Name, stack, StringComparison.Ordinal));
+        }
+        catch (DirectoryNotFoundException)
+        {
+            known = false;
+        }
+
+        if (!known)
+        {
+            return Results.NotFound(new { error = $"No stack folder named '{stack}' was found." });
+        }
+    }
+
+    return coordinator.TryStartUpdate(stack)
         ? Results.Accepted("/api/status", coordinator.GetStatus())
         : Results.Conflict(new { error = "An update is already running." });
 });

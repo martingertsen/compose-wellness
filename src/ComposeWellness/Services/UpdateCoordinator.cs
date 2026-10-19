@@ -53,8 +53,12 @@ public sealed class UpdateCoordinator(
         }
     }
 
-    /// <summary>Starts an update unless one is already running. Returns false in that case.</summary>
-    public bool TryStartUpdate()
+    /// <summary>
+    /// Starts an update unless one is already running. Returns false in that case. With
+    /// <paramref name="onlyStack"/> set, only the discovered stack folder with exactly that name is
+    /// processed; the name is matched against discovery results and never used as a path.
+    /// </summary>
+    public bool TryStartUpdate(string? onlyStack = null)
     {
         lock (_gate)
         {
@@ -71,7 +75,7 @@ public sealed class UpdateCoordinator(
 
             var token = _cancellation.Token;
             // Task.Run detaches the update from any HTTP request, so closing the browser cannot stop it.
-            _run = Task.Run(() => RunAsync(session, token), CancellationToken.None);
+            _run = Task.Run(() => RunAsync(session, onlyStack, token), CancellationToken.None);
 
             Broadcast(SnapshotLocked());
             return true;
@@ -132,18 +136,31 @@ public sealed class UpdateCoordinator(
         }
     }
 
-    private async Task RunAsync(Session session, CancellationToken cancellationToken)
+    private async Task RunAsync(Session session, string? onlyStack, CancellationToken cancellationToken)
     {
         var log = new SessionLog(this);
         var anyFailed = false;
 
         try
         {
-            log.App("Starting Docker update");
+            log.App(onlyStack is null ? "Starting Docker update" : $"Starting Docker update of {onlyStack} only");
             log.App($"Root directory: {discovery.RootDirectory}");
 
-            var stacks = discovery.DiscoverStacks();
-            log.App($"Found {stacks.Count} directories to inspect");
+            IReadOnlyList<DiscoveredStack> stacks = discovery.DiscoverStacks();
+            if (onlyStack is null)
+            {
+                log.App($"Found {stacks.Count} directories to inspect");
+            }
+            else
+            {
+                stacks = stacks.Where(s => string.Equals(s.Name, onlyStack, StringComparison.Ordinal)).ToList();
+                if (stacks.Count == 0)
+                {
+                    // The folder disappeared between the request and the start of the run.
+                    log.App($"Stack folder {onlyStack} no longer exists");
+                    anyFailed = true;
+                }
+            }
 
             for (var index = 0; index < stacks.Count; index++)
             {

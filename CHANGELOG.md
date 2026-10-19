@@ -2,6 +2,13 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.8 - 2026-10-19
+
+- Hovering a folder under "Detected stack folders" shows an update icon that updates only that
+  folder. The icon overlaps the neighbouring chip instead of moving the list.
+- `POST /api/update?stack=<folder name>` runs the update for one stack folder. The name is only
+  matched against discovered folders and is never used as a path; unknown names return `404`.
+
 ## 1.1.7 - 2026-09-17
 
 - The update notice is a full-width banner above the title bar, matching its width and padding,

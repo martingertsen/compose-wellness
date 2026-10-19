@@ -67,6 +67,38 @@ public sealed class UpdateCoordinatorTests
     }
 
     [Fact]
+    public async Task Single_stack_update_processes_only_that_stack_folder()
+    {
+        var updateService = new ScriptedUpdateService();
+        var coordinator = CreateCoordinator(new FixedDiscovery(Compose("backend"), Compose("database"), Compose("frontend")), updateService);
+
+        Assert.True(coordinator.TryStartUpdate("database"));
+        await coordinator.CurrentRun!;
+
+        var status = coordinator.GetStatus();
+        Assert.Equal(UpdateState.Finished, status.State);
+        Assert.Equal(["database"], status.Results.Select(r => r.Name).ToArray());
+        Assert.Equal(["database"], updateService.Updated);
+        Assert.Contains(coordinator.GetLog(0), e => e.Text == "Starting Docker update of database only");
+    }
+
+    [Fact]
+    public async Task Single_stack_update_of_a_vanished_folder_fails_without_touching_others()
+    {
+        var updateService = new ScriptedUpdateService();
+        var coordinator = CreateCoordinator(new FixedDiscovery(Compose("backend")), updateService);
+
+        Assert.True(coordinator.TryStartUpdate("gone"));
+        await coordinator.CurrentRun!;
+
+        var status = coordinator.GetStatus();
+        Assert.Equal(UpdateState.Failed, status.State);
+        Assert.Empty(status.Results);
+        Assert.Empty(updateService.Updated);
+        Assert.Contains(coordinator.GetLog(0), e => e.Text == "Stack folder gone no longer exists");
+    }
+
+    [Fact]
     public async Task Summary_counts_stacks_with_recreated_containers()
     {
         var updateService = new ScriptedUpdateService();
