@@ -22,13 +22,15 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
     private Version? _latest;
     private string? _url;
     private string? _lastError;
-    private string? _lastLoggedError;
+    private readonly TimeProvider _time;
     private DateTimeOffset? _lastCheckedAt;
+    private long? _lastCheckedTimestamp;
     private Task? _pendingCheck;
     private CancellationToken _stoppingToken = CancellationToken.None;
 
-    public ReleaseChecker(IOptions<ComposeWellnessOptions> options, ApplicationVersion running, HttpClient http, ILogger<ReleaseChecker> logger)
+    public ReleaseChecker(IOptions<ComposeWellnessOptions> options, ApplicationVersion running, HttpClient http, ILogger<ReleaseChecker> logger, TimeProvider? time = null)
     {
+        _time = time ?? TimeProvider.System;
         Repository = options.Value.UpdateRepository ?? string.Empty;
         _running = running;
         _http = http;
@@ -70,7 +72,10 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
                 return true;
             }
 
-            if (_lastCheckedAt is { } last && DateTimeOffset.UtcNow - last < maxAge)
+            // Age is measured on the monotonic clock. The wall clock can jump backwards (for example
+            // when NTP corrects the time shortly after a reboot), which would make the last check look
+            // brand new for hours and hide a release published in between.
+            if (_lastCheckedTimestamp is { } last && _time.GetElapsedTime(last) < maxAge)
             {
                 return false;
             }
@@ -151,8 +156,7 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
                 _latest = version;
                 _url = url;
                 _lastError = null;
-                _lastLoggedError = null;
-                _lastCheckedAt = DateTimeOffset.UtcNow;
+                MarkCheckedLocked();
             }
 
             _logger.LogInformation("Latest release of {Repository} is {Latest}; running {Running}.", Repository, version, _running.Text);
@@ -170,24 +174,21 @@ public sealed class ReleaseChecker : BackgroundService, IReleaseChecker
 
     private void Fail(string message)
     {
-        bool firstTime;
         lock (_gate)
         {
             _lastError = message;
-            firstTime = _lastLoggedError != message;
-            _lastLoggedError = message;
             // A failed check still counts as a check, otherwise an offline host would retry on every page load.
-            _lastCheckedAt = DateTimeOffset.UtcNow;
+            MarkCheckedLocked();
         }
 
-        // The same failure repeating every six hours on an offline host is not worth a journal line each time.
-        if (firstTime)
-        {
-            _logger.LogInformation("{Message}", message);
-        }
-        else
-        {
-            _logger.LogDebug("{Message}", message);
-        }
+        // Logged every time: a failure that repeats silently is what makes a missing update notice
+        // impossible to explain. Checks are rate limited, so this stays at a few lines per hour.
+        _logger.LogWarning("Release check failed: {Message}", message);
+    }
+
+    private void MarkCheckedLocked()
+    {
+        _lastCheckedAt = _time.GetUtcNow();
+        _lastCheckedTimestamp = _time.GetTimestamp();
     }
 }

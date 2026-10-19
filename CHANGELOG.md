@@ -2,6 +2,14 @@
 
 All notable changes to Compose Wellness. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.9 - 2026-10-19
+
+- Fix: the age of the last release check is measured on the monotonic clock. A wall clock that
+  jumped backwards (for example an NTP correction after a reboot) made the last check look fresh
+  for hours, so a new release did not show up when the page was opened.
+- Every failed release check is logged as a warning, not only the first of a kind, and
+  `GET /api/settings` reports the reason as `updateCheckError`.
+
 ## 1.1.8 - 2026-10-19
 
 - Hovering a folder under "Detected stack folders" shows an update icon that updates only that

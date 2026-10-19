@@ -154,6 +154,8 @@ api.MapGet("/settings", (IReleaseChecker releases, ISelfUpdateTrigger selfUpdate
     releaseUrl = releases.ReleaseUrl,
     updateAvailable = releases.UpdateAvailable,
     canSelfUpdate = selfUpdate.Enabled,
+    // Why the most recent release check failed, or null. Shown so a missing update notice can be explained.
+    updateCheckError = releases.LastError,
     // Reading the settings also refreshes a stale release check in the background, so a page
     // opened minutes after a release shows the update without waiting for the 6 hour timer.
     checking = releases.RequestCheckIfStale(TimeSpan.FromMinutes(10)),

@@ -172,6 +172,7 @@ public sealed class ApiTests : IDisposable
         Assert.True(settings.GetProperty("updateAvailable").GetBoolean());
         Assert.True(settings.GetProperty("canSelfUpdate").GetBoolean());
         Assert.False(settings.GetProperty("checking").GetBoolean());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, settings.GetProperty("updateCheckError").ValueKind);
     }
 
     [Fact]

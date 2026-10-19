@@ -9,14 +9,43 @@ namespace ComposeWellness.Tests;
 
 public sealed class ReleaseCheckerTests
 {
-    private static ReleaseChecker Create(string running, HttpStatusCode status, string body, out StubHttpMessageHandler handler, string repository = "owner/repo")
+    private static ReleaseChecker Create(string running, HttpStatusCode status, string body, out StubHttpMessageHandler handler, string repository = "owner/repo", TimeProvider? time = null)
     {
         handler = new StubHttpMessageHandler(status, body);
         return new ReleaseChecker(
             Options.Create(new ComposeWellnessOptions { UpdateRepository = repository }),
             new ApplicationVersion(running),
             new HttpClient(handler),
-            NullLogger<ReleaseChecker>.Instance);
+            NullLogger<ReleaseChecker>.Instance,
+            time);
+    }
+
+    /// <summary>A clock whose wall time and monotonic timestamp can be moved independently.</summary>
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        public DateTimeOffset WallClock { get; set; } = new(2026, 10, 19, 9, 34, 0, TimeSpan.Zero);
+        public long Ticks { get; set; } = 1_000_000;
+
+        public override DateTimeOffset GetUtcNow() => WallClock;
+        public override long GetTimestamp() => Ticks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    }
+
+    [Fact]
+    public async Task Wall_clock_jumping_backwards_does_not_keep_a_stale_result_fresh()
+    {
+        var time = new ManualTimeProvider();
+        var checker = Create("1.0.0", HttpStatusCode.OK, """{ "tag_name": "v1.1.0", "html_url": "u" }""", out var handler, time: time);
+        Assert.True(checker.RequestCheckIfStale(TimeSpan.FromMinutes(10)));
+        await checker.PendingCheck!;
+
+        // The wall clock is corrected two hours back while eleven minutes really pass.
+        time.WallClock -= TimeSpan.FromHours(2);
+        time.Ticks += TimeSpan.FromMinutes(11).Ticks;
+
+        Assert.True(checker.RequestCheckIfStale(TimeSpan.FromMinutes(10)));
+        await checker.PendingCheck!;
+        Assert.Equal(2, handler.Requests.Count);
     }
 
     [Fact]
